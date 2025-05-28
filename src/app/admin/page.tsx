@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Alert, AlertDescription } from "@/components/ui/alert"
 import { 
   Select, 
   SelectContent, 
@@ -16,205 +17,36 @@ import {
 
 // Enhanced artist data structure for all 4 sections
 interface ArtistProfile {
-  // Section 1 - Artist Profile
   id: string
   firstName: string
   lastName: string
   studioName: string
   email: string
   phone?: string
-  website?: string
-  socialMedia?: {
-    instagram?: string
-    facebook?: string
-    twitter?: string
-  }
-  branding?: {
-    logoUrl?: string
-    colorPalette?: string[]
-    fontPreferences?: string[]
-  }
-  
-  // Section 2 - Artwork Catalog
-  artworks?: Array<{
-    id: string
-    title: string
-    year: number
-    medium: string
-    dimensions: string
-    keywords: string[]
-    fileUrl?: string
-  }>
-  
-  // Section 3 - Product Configuration
-  productOfferings?: {
-    unframedPrints: boolean
-    framedPrints: boolean
-    canvasWraps: boolean
-    greetingCards: boolean
-    metalPrints: boolean
-    [key: string]: boolean
-  }
-  availableSizes?: Array<{
-    name: string
-    width: number
-    height: number
-    unit: string
-  }>
-  printMediaOptions?: Array<{
-    name: string
-    finish: string
-    additionalCost: number
-  }>
-  
-  // Section 4 - Pricing Configuration
-  pricingStrategy?: {
-    strategy: string
-    targetMargin: number
-    minimumPrice: number
-  }
-  productVariants?: Array<{
-    sku: string
-    productType: string
-    baseCost: number
-    finalPrice: number
-  }>
-  
-  // System metadata
   status: "draft" | "in_review" | "ready" | "active"
   submissionDate?: string
   completedSections: number[]
   lastUpdated: string
-}
-
-// Mock enhanced data for demonstration
-const MOCK_ARTISTS: ArtistProfile[] = [
-  {
-    id: "ALN-2025-0001",
-    firstName: "Sarah",
-    lastName: "Johnson",
-    studioName: "Wildlight Prints",
-    email: "sarah@wildlightprints.com",
-    phone: "(555) 123-4567",
-    website: "wildlightprints.com",
-    socialMedia: {
-      instagram: "@wildlightprints",
-      facebook: "WildlightPrintsStudio"
-    },
-    branding: {
-      colorPalette: ["#2C5F41", "#A0C49D", "#F7DC6F"],
-      fontPreferences: ["Playfair Display", "Source Sans Pro"]
-    },
-    artworks: [
-      {
-        id: "art-001",
-        title: "Mountain Sunrise",
-        year: 2024,
-        medium: "Acrylic on Canvas",
-        dimensions: "24x36 inches",
-        keywords: ["landscape", "nature", "sunrise"]
-      },
-      {
-        id: "art-002", 
-        title: "Forest Dreams",
-        year: 2024,
-        medium: "Watercolor",
-        dimensions: "16x20 inches",
-        keywords: ["forest", "trees", "ethereal"]
-      }
-    ],
-    productOfferings: {
-      unframedPrints: true,
-      framedPrints: true,
-      canvasWraps: true,
-      greetingCards: true,
-      metalPrints: false
-    },
-    availableSizes: [
-      { name: "8x10", width: 8, height: 10, unit: "inches" },
-      { name: "11x14", width: 11, height: 14, unit: "inches" },
-      { name: "16x20", width: 16, height: 20, unit: "inches" }
-    ],
-    printMediaOptions: [
-      { name: "Fine Art Rag", finish: "matte", additionalCost: 5.00 },
-      { name: "Canvas", finish: "textured", additionalCost: 8.00 }
-    ],
-    pricingStrategy: {
-      strategy: "cost_plus",
-      targetMargin: 65,
-      minimumPrice: 30
-    },
-    productVariants: [
-      { sku: "ALN-SJ-PRNT-8X10-RAG", productType: "unframed_print", baseCost: 12.00, finalPrice: 35.00 },
-      { sku: "ALN-SJ-FRMD-11X14-CNV", productType: "framed_print", baseCost: 25.00, finalPrice: 85.00 }
-    ],
-    status: "active",
-    submissionDate: "2025-05-20",
-    completedSections: [1, 2, 3, 4],
-    lastUpdated: "2025-05-27"
-  },
-  {
-    id: "ALN-2025-0002",
-    firstName: "Marcus",
-    lastName: "Chen",
-    studioName: "Urban Canvas Studio",
-    email: "marcus@urbancanvas.art",
-    phone: "(555) 987-6543",
-    socialMedia: {
-      instagram: "@urbancanvas",
-      twitter: "@urbcanvas"
-    },
-    artworks: [
-      {
-        id: "art-003",
-        title: "City Lights",
-        year: 2025,
-        medium: "Digital Art",
-        dimensions: "20x30 inches",
-        keywords: ["urban", "city", "lights", "modern"]
-      }
-    ],
-    productOfferings: {
-      unframedPrints: true,
-      framedPrints: false,
-      canvasWraps: true,
-      greetingCards: false,
-      metalPrints: true
-    },
-    pricingStrategy: {
-      strategy: "market_based",
-      targetMargin: 55,
-      minimumPrice: 25
-    },
-    productVariants: [
-      { sku: "ALN-MC-PRNT-12X18-SAT", productType: "unframed_print", baseCost: 15.00, finalPrice: 45.00 }
-    ],
-    status: "in_review",
-    submissionDate: "2025-05-22",
-    completedSections: [1, 2, 3],
-    lastUpdated: "2025-05-26"
-  },
-  {
-    id: "ALN-2025-0003",
-    firstName: "Elena",
-    lastName: "Rodriguez",
-    studioName: "Coastal Expressions",
-    email: "elena@coastalexpressions.com",
-    artworks: [
-      {
-        id: "art-004",
-        title: "Ocean Waves",
-        year: 2024,
-        medium: "Oil on Canvas",
-        dimensions: "18x24 inches",
-        keywords: ["ocean", "waves", "coastal"]
-      }
-    ],
-    status: "draft",
-    completedSections: [1, 2],
-    lastUpdated: "2025-05-25"
+  artworkCount?: number
+  variantCount?: number
+  completionPercentage?: number
+  branding?: {
+    bio?: string
+    tagline?: string
+    artistic_style?: string
+    color_palette?: { primary?: string; secondary?: string; accent?: string }
+    preferred_fonts?: string[]
+    design_feel?: string
+    social_links?: {
+      instagram?: string
+      facebook?: string
+      twitter?: string
+      linkedin?: string
+      website?: string
+    }
+    domain_name?: string
   }
-]
+}
 
 const STATUS_COLORS = {
   draft: "bg-gray-100 text-gray-800",
@@ -224,11 +56,47 @@ const STATUS_COLORS = {
 }
 
 export default function AdminDashboard() {
-  const [artists, setArtists] = useState<ArtistProfile[]>(MOCK_ARTISTS)
+  const [artists, setArtists] = useState<ArtistProfile[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string>("")
   const [searchTerm, setSearchTerm] = useState("")
   const [statusFilter, setStatusFilter] = useState<string>("all")
   const [selectedArtist, setSelectedArtist] = useState<ArtistProfile | null>(null)
   const [sortBy, setSortBy] = useState<string>("lastUpdated")
+
+  // Fetch artists from API
+  const fetchArtists = async () => {
+    try {
+      setLoading(true)
+      setError("")
+      
+      const params = new URLSearchParams({
+        page: '1',
+        limit: '50',
+        ...(searchTerm && { search: searchTerm }),
+        ...(statusFilter !== 'all' && { status: statusFilter })
+      })
+
+      const response = await fetch(`/api/artists?${params}`)
+      const result = await response.json()
+
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || 'Failed to fetch artists')
+      }
+
+      setArtists(result.data || [])
+    } catch (err) {
+      console.error('Error fetching artists:', err)
+      setError(err instanceof Error ? err.message : 'Failed to fetch artists')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  // Fetch artists on component mount and when filters change
+  useEffect(() => {
+    fetchArtists()
+  }, [searchTerm, statusFilter])
 
   const filteredArtists = artists.filter(artist => {
     const matchesSearch = artist.firstName.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -247,7 +115,7 @@ export default function AdminDashboard() {
       case "studio":
         return a.studioName.localeCompare(b.studioName)
       case "completion":
-        return b.completedSections.length - a.completedSections.length
+        return (b.completedSections?.length || 0) - (a.completedSections?.length || 0)
       case "lastUpdated":
       default:
         return new Date(b.lastUpdated).getTime() - new Date(a.lastUpdated).getTime()
@@ -263,20 +131,20 @@ export default function AdminDashboard() {
   }
 
   const completionStats = {
-    section1: artists.filter(a => a.completedSections.includes(1)).length,
-    section2: artists.filter(a => a.completedSections.includes(2)).length,
-    section3: artists.filter(a => a.completedSections.includes(3)).length,
-    section4: artists.filter(a => a.completedSections.includes(4)).length,
-    complete: artists.filter(a => a.completedSections.length === 4).length
+    section1: artists.filter(a => a.completedSections?.includes(1)).length,
+    section2: artists.filter(a => a.completedSections?.includes(2)).length,
+    section3: artists.filter(a => a.completedSections?.includes(3)).length,
+    section4: artists.filter(a => a.completedSections?.includes(4)).length,
+    complete: artists.filter(a => a.completedSections?.length === 4).length
   }
 
   const exportData = (format: "csv" | "json") => {
     const exportArtists = filteredArtists.map(artist => ({
       ...artist,
       fullName: `${artist.firstName} ${artist.lastName}`,
-      artworkCount: artist.artworks?.length || 0,
-      productVariantCount: artist.productVariants?.length || 0,
-      completionPercentage: (artist.completedSections.length / 4) * 100
+      artworkCount: artist.artworkCount || 0,
+      productVariantCount: artist.variantCount || 0,
+      completionPercentage: ((artist.completedSections?.length || 0) / 4) * 100
     }))
 
     if (format === "csv") {
@@ -307,6 +175,16 @@ export default function AdminDashboard() {
     }
   }
 
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-pulse">Loading artists from database...</div>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="min-h-screen bg-background">
       <div className="container mx-auto px-4 py-8">
@@ -319,8 +197,16 @@ export default function AdminDashboard() {
             <p className="text-muted-foreground mt-2">
               Manage artist onboarding submissions across all 4 sections
             </p>
+            {artists.length > 0 && (
+              <Badge variant="default" className="mt-2 bg-green-600">
+                🟢 Connected to Live Database - {artists.length} artists found
+              </Badge>
+            )}
           </div>
           <div className="flex gap-2">
+            <Button variant="outline" onClick={() => fetchArtists()}>
+              Refresh Data
+            </Button>
             <Button variant="outline" onClick={() => exportData("csv")}>
               Export CSV
             </Button>
@@ -329,6 +215,18 @@ export default function AdminDashboard() {
             </Button>
           </div>
         </div>
+
+        {/* Error Display */}
+        {error && (
+          <Alert className="mb-8 border-red-200 bg-red-50">
+            <AlertDescription className="text-red-800">
+              <strong>Database Error:</strong> {error}
+              <Button variant="outline" size="sm" onClick={fetchArtists} className="ml-4">
+                Retry
+              </Button>
+            </AlertDescription>
+          </Alert>
+        )}
 
         {/* Status Overview Cards */}
         <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-8">
@@ -487,24 +385,21 @@ export default function AdminDashboard() {
                         {[1, 2, 3, 4].map(section => (
                           <Badge 
                             key={section}
-                            variant={artist.completedSections.includes(section) ? "default" : "secondary"}
-                            className={`text-xs ${artist.completedSections.includes(section) ? 'bg-green-600' : 'bg-gray-300'}`}
+                            variant={artist.completedSections?.includes(section) ? "default" : "secondary"}
+                            className={`text-xs ${artist.completedSections?.includes(section) ? 'bg-green-600' : 'bg-gray-300'}`}
                           >
                             {section}
                           </Badge>
                         ))}
                         <span className="text-xs text-muted-foreground ml-2">
-                          ({artist.completedSections.length}/4 complete)
+                          ({artist.completedSections?.length || 0}/4 complete)
                         </span>
                       </div>
                       
                       <div className="flex items-center gap-6 text-sm text-muted-foreground">
                         <span>ID: {artist.id}</span>
-                        <span>{artist.artworks?.length || 0} artworks</span>
-                        <span>{artist.productVariants?.length || 0} variants</span>
-                        {artist.pricingStrategy && (
-                          <span>Strategy: {artist.pricingStrategy.strategy.replace('_', ' ')}</span>
-                        )}
+                        <span>{artist.artworkCount || 0} artworks</span>
+                        <span>{artist.variantCount || 0} variants</span>
                         <span>Updated: {new Date(artist.lastUpdated).toLocaleDateString()}</span>
                       </div>
                     </div>
@@ -520,17 +415,30 @@ export default function AdminDashboard() {
                           Approve
                         </Button>
                       )}
+                      {artist.status === 'draft' && (
+                        <Badge variant="secondary" className="ml-2">
+                          Draft Saved
+                        </Badge>
+                      )}
                     </div>
                   </div>
                 </div>
               ))}
             </div>
 
-            {filteredArtists.length === 0 && (
+            {filteredArtists.length === 0 && !loading && (
               <div className="text-center py-12">
                 <p className="text-muted-foreground">
-                  No artists found matching your search criteria.
+                  {artists.length === 0 
+                    ? "No artists found in the database. Create your first artist onboarding!" 
+                    : "No artists found matching your search criteria."
+                  }
                 </p>
+                {artists.length === 0 && (
+                  <Button variant="outline" className="mt-4" onClick={() => window.open('/onboarding', '_blank')}>
+                    Start Artist Onboarding
+                  </Button>
+                )}
               </div>
             )}
           </CardContent>
@@ -547,142 +455,40 @@ export default function AdminDashboard() {
                 </Button>
               </CardTitle>
               <CardDescription>
-                Comprehensive view of all artist data across 4 sections
+                Comprehensive view of artist data from database
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <Tabs defaultValue="profile" className="w-full">
-                <TabsList className="grid w-full grid-cols-4">
-                  <TabsTrigger value="profile">Profile</TabsTrigger>
-                  <TabsTrigger value="artwork">Artwork</TabsTrigger>
-                  <TabsTrigger value="products">Products</TabsTrigger>
-                  <TabsTrigger value="pricing">Pricing</TabsTrigger>
-                </TabsList>
-                
-                <TabsContent value="profile" className="space-y-4">
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <strong>Contact Information:</strong>
-                      <p>Email: {selectedArtist.email}</p>
-                      {selectedArtist.phone && <p>Phone: {selectedArtist.phone}</p>}
-                      {selectedArtist.website && <p>Website: {selectedArtist.website}</p>}
-                    </div>
-                    <div>
-                      <strong>Social Media:</strong>
-                      {selectedArtist.socialMedia?.instagram && <p>Instagram: {selectedArtist.socialMedia.instagram}</p>}
-                      {selectedArtist.socialMedia?.facebook && <p>Facebook: {selectedArtist.socialMedia.facebook}</p>}
-                      {selectedArtist.socialMedia?.twitter && <p>Twitter: {selectedArtist.socialMedia.twitter}</p>}
-                    </div>
+              <div className="space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <strong>Contact Information:</strong>
+                    <p>Email: {selectedArtist.email}</p>
+                    {selectedArtist.phone && <p>Phone: {selectedArtist.phone}</p>}
                   </div>
-                  {selectedArtist.branding && (
-                    <div>
-                      <strong>Branding:</strong>
-                      {selectedArtist.branding.colorPalette && (
-                        <div className="flex gap-2 mt-2">
-                          {selectedArtist.branding.colorPalette.map((color, index) => (
-                            <div 
-                              key={index}
-                              className="w-8 h-8 rounded"
-                              style={{ backgroundColor: color }}
-                              title={color}
-                            />
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </TabsContent>
+                  <div>
+                    <strong>Status Information:</strong>
+                    <p>Status: {selectedArtist.status}</p>
+                    <p>Completion: {selectedArtist.completedSections?.length || 0}/4 sections</p>
+                    <p>Last Updated: {new Date(selectedArtist.lastUpdated).toLocaleString()}</p>
+                  </div>
+                </div>
                 
-                <TabsContent value="artwork" className="space-y-4">
-                  {selectedArtist.artworks && selectedArtist.artworks.length > 0 ? (
-                    <div className="space-y-4">
-                      {selectedArtist.artworks.map((artwork) => (
-                        <Card key={artwork.id} className="p-4">
-                          <h4 className="font-semibold">{artwork.title}</h4>
-                          <p className="text-sm text-muted-foreground">
-                            {artwork.year} • {artwork.medium} • {artwork.dimensions}
-                          </p>
-                          <div className="flex gap-1 mt-2">
-                            {artwork.keywords.map((keyword, index) => (
-                              <Badge key={index} variant="secondary" className="text-xs">
-                                {keyword}
-                              </Badge>
-                            ))}
-                          </div>
-                        </Card>
-                      ))}
-                    </div>
-                  ) : (
-                    <p className="text-muted-foreground">No artwork uploaded yet.</p>
-                  )}
-                </TabsContent>
-                
-                <TabsContent value="products" className="space-y-4">
-                  {selectedArtist.productOfferings ? (
-                    <div>
-                      <strong>Product Offerings:</strong>
-                      <div className="grid grid-cols-2 gap-2 mt-2">
-                        {Object.entries(selectedArtist.productOfferings).map(([product, offered]) => (
-                          <div key={product} className="flex items-center gap-2">
-                            <Badge variant={offered ? "default" : "secondary"}>
-                              {offered ? "✓" : "✗"}
-                            </Badge>
-                            <span className="text-sm">{product.replace(/([A-Z])/g, ' $1').trim()}</span>
-                          </div>
-                        ))}
-                      </div>
-                      
-                      {selectedArtist.availableSizes && (
-                        <div className="mt-4">
-                          <strong>Available Sizes:</strong>
-                          <div className="flex gap-2 mt-2">
-                            {selectedArtist.availableSizes.map((size, index) => (
-                              <Badge key={index} variant="outline">
-                                {size.name}
-                              </Badge>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  ) : (
-                    <p className="text-muted-foreground">Product configuration not completed.</p>
-                  )}
-                </TabsContent>
-                
-                <TabsContent value="pricing" className="space-y-4">
-                  {selectedArtist.pricingStrategy ? (
-                    <div>
-                      <div className="grid grid-cols-2 gap-4">
-                        <div>
-                          <strong>Pricing Strategy:</strong>
-                          <p>Strategy: {selectedArtist.pricingStrategy.strategy.replace('_', ' ')}</p>
-                          <p>Target Margin: {selectedArtist.pricingStrategy.targetMargin}%</p>
-                          <p>Minimum Price: ${selectedArtist.pricingStrategy.minimumPrice}</p>
-                        </div>
-                      </div>
-                      
-                      {selectedArtist.productVariants && selectedArtist.productVariants.length > 0 && (
-                        <div className="mt-4">
-                          <strong>Product Variants:</strong>
-                          <div className="space-y-2 mt-2">
-                            {selectedArtist.productVariants.map((variant, index) => (
-                              <div key={index} className="flex justify-between items-center p-2 border rounded">
-                                <span className="font-mono text-sm">{variant.sku}</span>
-                                <span className="text-sm">{variant.productType.replace('_', ' ')}</span>
-                                <span className="text-sm">Cost: ${variant.baseCost}</span>
-                                <span className="font-semibold">${variant.finalPrice}</span>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  ) : (
-                    <p className="text-muted-foreground">Pricing configuration not completed.</p>
-                  )}
-                </TabsContent>
-              </Tabs>
+                {selectedArtist.branding && (
+                  <div>
+                    <strong>Branding Information:</strong>
+                    {selectedArtist.branding.bio && <p>Bio: {selectedArtist.branding.bio.substring(0, 200)}...</p>}
+                    {selectedArtist.branding.tagline && <p>Tagline: {selectedArtist.branding.tagline}</p>}
+                    {selectedArtist.branding.artistic_style && <p>Style: {selectedArtist.branding.artistic_style.substring(0, 150)}...</p>}
+                  </div>
+                )}
+
+                <div className="mt-4 p-4 bg-muted rounded-lg">
+                  <p className="text-sm text-muted-foreground">
+                    This data is live from the database. Artist ID: {selectedArtist.id}
+                  </p>
+                </div>
+              </div>
             </CardContent>
           </Card>
         )}
