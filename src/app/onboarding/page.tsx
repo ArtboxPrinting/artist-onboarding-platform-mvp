@@ -51,54 +51,99 @@ export default function OnboardingPage() {
   const [artistId, setArtistId] = useState<string>()
   const [sectionData, setSectionData] = useState<Record<number, any>>({})
   const [saveStatus, setSaveStatus] = useState<string>("")
+  const [isConnectedToDatabase, setIsConnectedToDatabase] = useState<boolean>(false)
 
-  // Generate or retrieve artist ID
+  // Generate or retrieve artist ID and test database connection
   useEffect(() => {
-    const storedArtistId = localStorage.getItem("artist_id")
-    if (storedArtistId) {
-      setArtistId(storedArtistId)
-    } else {
-      const newArtistId = `artist_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
-      setArtistId(newArtistId)
-      localStorage.setItem("artist_id", newArtistId)
-    }
-
-    // Load completed sections from localStorage
-    const savedProgress = localStorage.getItem("onboarding_progress")
-    if (savedProgress) {
+    const initializeArtist = async () => {
+      // Test database connection first
       try {
-        const progress = JSON.parse(savedProgress)
-        setCompletedSections(progress.completedSections || [])
-        setSectionData(progress.sectionData || {})
+        const healthResponse = await fetch('/api/health')
+        const healthData = await healthResponse.json()
+        setIsConnectedToDatabase(healthData.success && healthData.database)
       } catch (error) {
-        console.error("Error loading saved progress:", error)
+        console.error('Database connection test failed:', error)
+        setIsConnectedToDatabase(false)
+      }
+
+      // Initialize or retrieve artist ID
+      const storedArtistId = localStorage.getItem("artist_id")
+      if (storedArtistId) {
+        setArtistId(storedArtistId)
+      } else {
+        const newArtistId = `artist_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+        setArtistId(newArtistId)
+        localStorage.setItem("artist_id", newArtistId)
+      }
+
+      // Load completed sections from localStorage
+      const savedProgress = localStorage.getItem("onboarding_progress")
+      if (savedProgress) {
+        try {
+          const progress = JSON.parse(savedProgress)
+          setCompletedSections(progress.completedSections || [])
+          setSectionData(progress.sectionData || {})
+        } catch (error) {
+          console.error("Error loading saved progress:", error)
+        }
       }
     }
+
+    initializeArtist()
   }, [])
 
-  // Save progress to localStorage
-  const saveProgress = () => {
+  // Save progress to both localStorage and database
+  const saveProgress = async () => {
     try {
+      // Save to localStorage for backup
       const progress = {
         completedSections,
         sectionData,
         lastUpdated: new Date().toISOString()
       }
       localStorage.setItem("onboarding_progress", JSON.stringify(progress))
-      setSaveStatus("Progress saved automatically")
+
+      // Save to database if connected
+      if (isConnectedToDatabase && artistId && Object.keys(sectionData).length > 0) {
+        const response = await fetch('/api/onboarding', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            artistId,
+            sectionNumber: currentSection,
+            formData: sectionData[currentSection] || {},
+            sessionToken: `session_${artistId}_${Date.now()}`
+          }),
+        })
+
+        const result = await response.json()
+        
+        if (result.success) {
+          setSaveStatus("✅ Progress saved to database")
+        } else {
+          setSaveStatus("⚠️ Saved locally (database unavailable)")
+          console.warn('Database save failed:', result.error)
+        }
+      } else {
+        setSaveStatus("📱 Progress saved locally")
+      }
+      
       setTimeout(() => setSaveStatus(""), 3000)
     } catch (error) {
       console.error("Error saving progress:", error)
-      setSaveStatus("Error saving progress")
+      setSaveStatus("❌ Error saving progress")
+      setTimeout(() => setSaveStatus(""), 3000)
     }
   }
 
-  const handleSectionComplete = (sectionId: number) => {
+  const handleSectionComplete = async (sectionId: number) => {
     if (!completedSections.includes(sectionId)) {
       setCompletedSections([...completedSections, sectionId])
     }
     
-    saveProgress()
+    await saveProgress()
     
     // Move to next section if not at the end
     if (sectionId < ONBOARDING_SECTIONS.length) {
@@ -106,14 +151,14 @@ export default function OnboardingPage() {
     }
   }
 
-  const handleSectionClick = (sectionId: number) => {
+  const handleSectionClick = async (sectionId: number) => {
     // Save current section data before switching
-    saveProgress()
+    await saveProgress()
     setCurrentSection(sectionId)
   }
 
-  const handleSaveProgress = () => {
-    saveProgress()
+  const handleSaveProgress = async () => {
+    await saveProgress()
   }
 
   const updateSectionData = (sectionId: number, data: any) => {
@@ -130,7 +175,8 @@ export default function OnboardingPage() {
     if (!isApplicationComplete) return
 
     try {
-      // Submit complete application
+      setSaveStatus("🚀 Submitting application...")
+      
       const response = await fetch('/api/onboarding/complete', {
         method: 'POST',
         headers: {
@@ -146,15 +192,16 @@ export default function OnboardingPage() {
       const result = await response.json()
 
       if (result.success) {
-        setSaveStatus("Application submitted successfully!")
+        setSaveStatus("🎉 Application submitted successfully!")
         // Clear local storage after successful submission
         localStorage.removeItem("onboarding_progress")
+        localStorage.removeItem("artist_id")
       } else {
-        setSaveStatus(`Error: ${result.error}`)
+        setSaveStatus(`❌ Error: ${result.error}`)
       }
     } catch (error) {
       console.error("Error submitting application:", error)
-      setSaveStatus("Error submitting application")
+      setSaveStatus("❌ Error submitting application")
     }
   }
 
@@ -168,6 +215,7 @@ export default function OnboardingPage() {
       onSaveProgress: handleSaveProgress,
       artistId,
       initialData: sectionData[currentSection],
+      updateSectionData: (data: any) => updateSectionData(currentSection, data),
       artistInitials: sectionData[1]?.firstName ? `${sectionData[1].firstName[0]}${sectionData[1].lastName?.[0] || ''}` : undefined
     }
 
@@ -186,11 +234,28 @@ export default function OnboardingPage() {
             Complete all 4 sections to set up your personalized art e-commerce platform
           </p>
           {artistId && (
-            <Badge variant="outline" className="mt-2">
-              Artist ID: {artistId}
-            </Badge>
+            <div className="flex items-center justify-center gap-4 mt-2">
+              <Badge variant="outline">
+                Artist ID: {artistId}
+              </Badge>
+              <Badge variant={isConnectedToDatabase ? "default" : "secondary"}>
+                {isConnectedToDatabase ? "🟢 Database Connected" : "🔶 Local Mode"}
+              </Badge>
+            </div>
           )}
         </div>
+
+        {/* Database Connection Status */}
+        {!isConnectedToDatabase && (
+          <div className="max-w-4xl mx-auto mb-6">
+            <Alert className="border-yellow-200 bg-yellow-50">
+              <AlertDescription className="text-yellow-800">
+                <strong>Local Mode:</strong> Your progress is being saved locally. 
+                Database connection will be restored automatically when available.
+              </AlertDescription>
+            </Alert>
+          </div>
+        )}
 
         {/* Progress Overview */}
         <div className="max-w-4xl mx-auto mb-8">
@@ -309,6 +374,12 @@ export default function OnboardingPage() {
                     {isApplicationComplete ? 'Complete' : 'In Progress'}
                   </span>
                 </div>
+                <div className="flex justify-between">
+                  <span>Database:</span>
+                  <span className={`font-medium ${isConnectedToDatabase ? 'text-green-600' : 'text-yellow-600'}`}>
+                    {isConnectedToDatabase ? 'Connected' : 'Local Mode'}
+                  </span>
+                </div>
               </CardContent>
             </Card>
           </div>
@@ -353,7 +424,9 @@ export default function OnboardingPage() {
           </Button>
           
           <div className="text-sm text-muted-foreground flex items-center gap-4">
-            <span>🔄 Auto-save enabled</span>
+            <span className={isConnectedToDatabase ? "text-green-600" : "text-yellow-600"}>
+              {isConnectedToDatabase ? "🔄 Auto-save active" : "📱 Local save only"}
+            </span>
             <span>•</span>
             <span className={isApplicationComplete ? "text-green-600 font-medium" : ""}>
               {completedSections.length}/{ONBOARDING_SECTIONS.length} completed
