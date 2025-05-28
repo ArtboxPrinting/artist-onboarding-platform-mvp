@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createArtist, updateArtist } from '@/lib/supabase/artists'
 import { section1Schema } from '@/lib/validations/section1-schema'
-import { createClient } from '@/lib/supabase/server'
 
 export async function POST(request: NextRequest) {
   try {
@@ -71,7 +70,8 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(
       { 
         success: false, 
-        error: 'Internal server error' 
+        error: 'Internal server error',
+        details: error instanceof Error ? error.message : 'Unknown error'
       }, 
       { status: 500 }
     )
@@ -80,7 +80,21 @@ export async function POST(request: NextRequest) {
 
 export async function GET(request: NextRequest) {
   try {
-    const supabase = await createClient()
+    // Check environment variables first
+    if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
+      return NextResponse.json({
+        success: false,
+        error: 'Supabase environment variables not configured',
+        details: {
+          hasUrl: !!process.env.NEXT_PUBLIC_SUPABASE_URL,
+          hasKey: !!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+        }
+      }, { status: 500 })
+    }
+
+    // Import and create client
+    const { createClient } = await import('@/lib/supabase/client')
+    const supabase = createClient()
     
     // Get search parameters
     const searchParams = request.nextUrl.searchParams
@@ -90,7 +104,7 @@ export async function GET(request: NextRequest) {
     const limit = parseInt(searchParams.get('limit') || '50')
     const offset = (page - 1) * limit
 
-    // Fetch artists with their branding data
+    // Start with simple query to test connection
     let artistsQuery = supabase
       .from('artists')
       .select(`
@@ -103,22 +117,12 @@ export async function GET(request: NextRequest) {
         location,
         status,
         created_at,
-        updated_at,
-        artist_branding (
-          bio,
-          tagline,
-          artistic_style,
-          color_palette,
-          preferred_fonts,
-          design_feel,
-          social_links,
-          domain_name
-        )
+        updated_at
       `)
 
     // Apply filters
     if (search) {
-      artistsQuery = artistsQuery.or(`full_name.ilike.%${search}%,studio_name.ilike.%${search}%,email.ilike.%${search}%,artist_id.ilike.%${search}%`)
+      artistsQuery = artistsQuery.or(`full_name.ilike.%${search}%,studio_name.ilike.%${search}%,email.ilike.%${search}%`)
     }
 
     if (status && status !== 'all') {
@@ -137,57 +141,33 @@ export async function GET(request: NextRequest) {
       return NextResponse.json(
         { 
           success: false, 
-          error: 'Failed to fetch artists', 
-          details: artistsError 
+          error: 'Database query failed', 
+          details: {
+            message: artistsError.message,
+            code: artistsError.code,
+            hint: artistsError.hint
+          }
         }, 
         { status: 500 }
       )
     }
 
-    // Get artwork counts for each artist
-    const artistIds = artists?.map(artist => artist.id) || []
-    const { data: artworkCounts } = await supabase
-      .from('artworks')
-      .select('artist_id')
-      .in('artist_id', artistIds)
-
-    // Get product variant counts for each artist  
-    const { data: variantCounts } = await supabase
-      .from('product_variants')
-      .select('artist_id')
-      .in('artist_id', artistIds)
-
-    // Get onboarding sessions to determine completed sections
-    const { data: sessions } = await supabase
-      .from('onboarding_sessions')
-      .select('artist_id, completed_sections')
-      .in('artist_id', artistIds)
-
-    // Transform data to match admin dashboard format
-    const transformedData = artists?.map(artist => {
-      const artworkCount = artworkCounts?.filter(ac => ac.artist_id === artist.id).length || 0
-      const variantCount = variantCounts?.filter(vc => vc.artist_id === artist.id).length || 0
-      const session = sessions?.find(s => s.artist_id === artist.id)
-      const completedSections = session?.completed_sections || []
-
-      return {
-        id: artist.artist_id || artist.id,
-        firstName: artist.full_name?.split(' ')[0] || '',
-        lastName: artist.full_name?.split(' ').slice(1).join(' ') || '',
-        studioName: artist.studio_name || '',
-        email: artist.email,
-        phone: artist.phone,
-        status: artist.status,
-        completedSections: Array.isArray(completedSections) ? completedSections : [],
-        artworkCount,
-        variantCount,
-        lastUpdated: artist.updated_at,
-        submissionDate: artist.created_at,
-        branding: artist.artist_branding?.[0] || null,
-        // Add completion percentage
-        completionPercentage: Array.isArray(completedSections) ? (completedSections.length / 4) * 100 : 0
-      }
-    }) || []
+    // Transform data to match expected format
+    const transformedData = artists?.map(artist => ({
+      id: artist.artist_id || artist.id,
+      firstName: artist.full_name?.split(' ')[0] || '',
+      lastName: artist.full_name?.split(' ').slice(1).join(' ') || '',
+      studioName: artist.studio_name || '',
+      email: artist.email,
+      phone: artist.phone,
+      status: artist.status,
+      completedSections: [], // Will be populated by separate query later
+      artworkCount: 0,
+      variantCount: 0,
+      lastUpdated: artist.updated_at,
+      submissionDate: artist.created_at,
+      completionPercentage: 0
+    })) || []
 
     return NextResponse.json({
       success: true,
@@ -204,7 +184,11 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(
       { 
         success: false, 
-        error: 'Internal server error' 
+        error: 'Internal server error',
+        details: {
+          message: error instanceof Error ? error.message : 'Unknown error',
+          type: error instanceof Error ? error.constructor.name : 'Unknown'
+        }
       }, 
       { status: 500 }
     )
