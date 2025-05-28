@@ -1,54 +1,60 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
 
 export async function GET(request: NextRequest) {
   try {
-    const supabase = await createClient()
+    // Check if environment variables exist
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+    const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
     
-    // Test database connection by querying a simple table
-    const { data: artists, error: artistsError } = await supabase
-      .from('artists')
-      .select('id, full_name, email, status, created_at')
-      .limit(5)
+    if (!supabaseUrl || !supabaseAnonKey) {
+      return NextResponse.json({
+        success: false,
+        error: 'Environment variables missing',
+        details: {
+          hasUrl: !!supabaseUrl,
+          hasKey: !!supabaseAnonKey,
+          urlPreview: supabaseUrl ? supabaseUrl.substring(0, 20) + '...' : 'MISSING'
+        }
+      })
+    }
 
-    const { data: sessions, error: sessionsError } = await supabase
-      .from('onboarding_sessions')
-      .select('id, artist_id, current_section, created_at')
-      .limit(5)
+    // Try to import and create Supabase client
+    const { createClient } = await import('@/lib/supabase/client')
+    const supabase = createClient()
+    
+    // Simple connection test
+    const { data, error } = await supabase
+      .from('artists')
+      .select('count', { count: 'exact', head: true })
+    
+    if (error) {
+      return NextResponse.json({
+        success: false,
+        error: 'Database query failed',
+        details: {
+          message: error.message,
+          code: error.code,
+          hint: error.hint
+        }
+      })
+    }
 
     return NextResponse.json({
       success: true,
-      database: !artistsError && !sessionsError,
+      database: true,
+      artistCount: data || 0,
       timestamp: new Date().toISOString(),
-      data: {
-        artists: {
-          count: artists?.length || 0,
-          error: artistsError?.message || null,
-          sample: artists?.map(a => ({
-            id: a.id,
-            name: a.full_name,
-            email: a.email,
-            status: a.status
-          })) || []
-        },
-        sessions: {
-          count: sessions?.length || 0,
-          error: sessionsError?.message || null,
-          sample: sessions?.map(s => ({
-            id: s.id,
-            artist_id: s.artist_id,
-            section: s.current_section
-          })) || []
-        }
-      }
+      connection: 'OK'
     })
+
   } catch (error) {
-    console.error('Health check error:', error)
     return NextResponse.json({
       success: false,
-      database: false,
-      error: error instanceof Error ? error.message : 'Unknown error',
-      timestamp: new Date().toISOString()
+      error: 'Server error',
+      details: {
+        message: error instanceof Error ? error.message : 'Unknown error',
+        stack: error instanceof Error ? error.stack?.split('\n').slice(0, 3) : undefined
+      }
     }, { status: 500 })
   }
 }
