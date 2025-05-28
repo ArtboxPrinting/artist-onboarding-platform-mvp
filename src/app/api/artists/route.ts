@@ -1,100 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createArtist, updateArtist } from '@/lib/supabase/artists'
-import { section1Schema } from '@/lib/validations/section1-schema'
-
-export async function POST(request: NextRequest) {
-  try {
-    const body = await request.json()
-    
-    // Validate the form data
-    const validationResult = section1Schema.safeParse(body)
-    if (!validationResult.success) {
-      return NextResponse.json(
-        { 
-          success: false, 
-          error: 'Validation failed', 
-          details: validationResult.error.errors 
-        }, 
-        { status: 400 }
-      )
-    }
-
-    const formData = validationResult.data
-
-    // Check if artist already exists (update vs create)
-    if (body.artistId) {
-      // Update existing artist
-      const result = await updateArtist(body.artistId, formData)
-      
-      if (result.error) {
-        console.error('Error updating artist:', result.error)
-        return NextResponse.json(
-          { 
-            success: false, 
-            error: 'Failed to update artist', 
-            details: result.error 
-          }, 
-          { status: 500 }
-        )
-      }
-
-      return NextResponse.json({ 
-        success: true, 
-        data: result.data,
-        message: 'Artist updated successfully'
-      })
-    } else {
-      // Create new artist
-      const result = await createArtist(formData)
-      
-      if (result.error) {
-        console.error('Error creating artist:', result.error)
-        return NextResponse.json(
-          { 
-            success: false, 
-            error: 'Failed to create artist', 
-            details: result.error 
-          }, 
-          { status: 500 }
-        )
-      }
-
-      return NextResponse.json({ 
-        success: true, 
-        data: result.data,
-        message: 'Artist created successfully'
-      }, { status: 201 })
-    }
-  } catch (error) {
-    console.error('Unexpected error in artists API:', error)
-    return NextResponse.json(
-      { 
-        success: false, 
-        error: 'Internal server error',
-        details: error instanceof Error ? error.message : 'Unknown error'
-      }, 
-      { status: 500 }
-    )
-  }
-}
+import { createClient } from '@/lib/supabase/server'
 
 export async function GET(request: NextRequest) {
   try {
-    // Check environment variables first
-    if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
-      return NextResponse.json({
-        success: false,
-        error: 'Supabase environment variables not configured',
-        details: {
-          hasUrl: !!process.env.NEXT_PUBLIC_SUPABASE_URL,
-          hasKey: !!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-        }
-      }, { status: 500 })
-    }
-
-    // Import and create client
-    const { createClient } = await import('@/lib/supabase/client')
-    const supabase = createClient()
+    // Create server-side Supabase client
+    const supabase = await createClient()
     
     // Get search parameters
     const searchParams = request.nextUrl.searchParams
@@ -104,23 +14,14 @@ export async function GET(request: NextRequest) {
     const limit = parseInt(searchParams.get('limit') || '50')
     const offset = (page - 1) * limit
 
-    // Start with simple query to test connection
+    console.log('Fetching artists with params:', { search, status, page, limit })
+
+    // Start with simple query - get all columns to avoid column name issues
     let artistsQuery = supabase
       .from('artists')
-      .select(`
-        id,
-        artist_id,
-        full_name,
-        studio_name,
-        email,
-        phone,
-        location,
-        status,
-        created_at,
-        updated_at
-      `)
+      .select('*')
 
-    // Apply filters
+    // Apply filters if provided
     if (search) {
       artistsQuery = artistsQuery.or(`full_name.ilike.%${search}%,studio_name.ilike.%${search}%,email.ilike.%${search}%`)
     }
@@ -134,10 +35,11 @@ export async function GET(request: NextRequest) {
       .range(offset, offset + limit - 1)
       .order('created_at', { ascending: false })
 
+    console.log('Executing query...')
     const { data: artists, error: artistsError, count } = await artistsQuery
 
     if (artistsError) {
-      console.error('Error fetching artists:', artistsError)
+      console.error('Database query error:', artistsError)
       return NextResponse.json(
         { 
           success: false, 
@@ -152,21 +54,26 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    // Transform data to match expected format
+    console.log('Query successful, found artists:', artists?.length || 0)
+
+    // Transform data to match admin dashboard format
     const transformedData = artists?.map(artist => ({
       id: artist.artist_id || artist.id,
       firstName: artist.full_name?.split(' ')[0] || '',
       lastName: artist.full_name?.split(' ').slice(1).join(' ') || '',
+      fullName: artist.full_name || '',
       studioName: artist.studio_name || '',
-      email: artist.email,
-      phone: artist.phone,
-      status: artist.status,
-      completedSections: [], // Will be populated by separate query later
+      email: artist.email || '',
+      phone: artist.phone || '',
+      location: artist.location || '',
+      status: artist.status || 'draft',
+      completedSections: [],
       artworkCount: 0,
       variantCount: 0,
       lastUpdated: artist.updated_at,
       submissionDate: artist.created_at,
-      completionPercentage: 0
+      completionPercentage: 25, // Default for section 1 completed
+      rawData: artist // Include raw data for debugging
     })) || []
 
     return NextResponse.json({
@@ -177,18 +84,90 @@ export async function GET(request: NextRequest) {
         limit,
         total: count || 0,
         totalPages: Math.ceil((count || 0) / limit)
+      },
+      debug: {
+        queryExecuted: true,
+        artistsFound: artists?.length || 0,
+        timestamp: new Date().toISOString()
       }
     })
+
   } catch (error) {
-    console.error('Unexpected error fetching artists:', error)
+    console.error('Unexpected error in artists API:', error)
     return NextResponse.json(
       { 
         success: false, 
         error: 'Internal server error',
         details: {
           message: error instanceof Error ? error.message : 'Unknown error',
-          type: error instanceof Error ? error.constructor.name : 'Unknown'
+          type: error instanceof Error ? error.constructor.name : 'Unknown',
+          stack: error instanceof Error ? error.stack?.split('\n').slice(0, 3) : undefined
         }
+      }, 
+      { status: 500 }
+    )
+  }
+}
+
+export async function POST(request: NextRequest) {
+  try {
+    const supabase = await createClient()
+    const body = await request.json()
+    
+    console.log('Creating/updating artist:', body)
+
+    // Simple insert/update logic
+    if (body.artistId) {
+      // Update existing artist
+      const { data, error } = await supabase
+        .from('artists')
+        .update(body)
+        .eq('artist_id', body.artistId)
+        .select()
+        .single()
+
+      if (error) {
+        console.error('Update error:', error)
+        return NextResponse.json(
+          { success: false, error: 'Failed to update artist', details: error }, 
+          { status: 500 }
+        )
+      }
+
+      return NextResponse.json({ 
+        success: true, 
+        data,
+        message: 'Artist updated successfully'
+      })
+    } else {
+      // Create new artist
+      const { data, error } = await supabase
+        .from('artists')
+        .insert(body)
+        .select()
+        .single()
+
+      if (error) {
+        console.error('Insert error:', error)
+        return NextResponse.json(
+          { success: false, error: 'Failed to create artist', details: error }, 
+          { status: 500 }
+        )
+      }
+
+      return NextResponse.json({ 
+        success: true, 
+        data,
+        message: 'Artist created successfully'
+      }, { status: 201 })
+    }
+  } catch (error) {
+    console.error('POST error:', error)
+    return NextResponse.json(
+      { 
+        success: false, 
+        error: 'Internal server error',
+        details: error instanceof Error ? error.message : 'Unknown error'
       }, 
       { status: 500 }
     )
