@@ -1,11 +1,11 @@
 "use client"
 
 import { useState, useEffect } from "react"
+import { createClient } from '@supabase/supabase-js'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { 
   Select, 
@@ -30,22 +30,7 @@ interface ArtistProfile {
   artworkCount?: number
   variantCount?: number
   completionPercentage?: number
-  branding?: {
-    bio?: string
-    tagline?: string
-    artistic_style?: string
-    color_palette?: { primary?: string; secondary?: string; accent?: string }
-    preferred_fonts?: string[]
-    design_feel?: string
-    social_links?: {
-      instagram?: string
-      facebook?: string
-      twitter?: string
-      linkedin?: string
-      website?: string
-    }
-    domain_name?: string
-  }
+  rawData?: any
 }
 
 const STATUS_COLORS = {
@@ -64,39 +49,71 @@ export default function AdminDashboard() {
   const [selectedArtist, setSelectedArtist] = useState<ArtistProfile | null>(null)
   const [sortBy, setSortBy] = useState<string>("lastUpdated")
 
-  // Fetch artists from API
-  const fetchArtists = async () => {
+  // Direct Supabase connection
+  const fetchArtistsDirectly = async () => {
     try {
       setLoading(true)
       setError("")
       
-      const params = new URLSearchParams({
-        page: '1',
-        limit: '50',
-        ...(searchTerm && { search: searchTerm }),
-        ...(statusFilter !== 'all' && { status: statusFilter })
-      })
+      // Use environment variables directly
+      const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+      const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 
-      const response = await fetch(`/api/artists?${params}`)
-      const result = await response.json()
-
-      if (!response.ok || !result.success) {
-        throw new Error(result.error || 'Failed to fetch artists')
+      if (!supabaseUrl || !supabaseKey) {
+        throw new Error('Supabase environment variables not configured')
       }
 
-      setArtists(result.data || [])
+      // Create direct Supabase client
+      const supabase = createClient(supabaseUrl, supabaseKey)
+      
+      console.log('Connecting directly to Supabase...')
+
+      // Query the artists table directly
+      const { data: artistsData, error: dbError } = await supabase
+        .from('artists')
+        .select('*')
+        .order('created_at', { ascending: false })
+
+      if (dbError) {
+        console.error('Database error:', dbError)
+        throw new Error(`Database query failed: ${dbError.message}`)
+      }
+
+      console.log('Found artists in database:', artistsData?.length || 0)
+      console.log('Sample artist data:', artistsData?.[0])
+
+      // Transform the raw database data
+      const transformedArtists = artistsData?.map((artist, index) => ({
+        id: artist.id || artist.artist_id || `artist-${index}`,
+        firstName: artist.first_name || artist.full_name?.split(' ')[0] || artist.name?.split(' ')[0] || 'Unknown',
+        lastName: artist.last_name || artist.full_name?.split(' ').slice(1).join(' ') || artist.name?.split(' ').slice(1).join(' ') || '',
+        studioName: artist.studio_name || artist.business_name || artist.company || 'Studio Name Not Set',
+        email: artist.email || 'email@example.com',
+        phone: artist.phone || artist.phone_number || '',
+        status: artist.status || 'draft',
+        completedSections: [1], // Default to section 1 complete
+        artworkCount: artist.artwork_count || 0,
+        variantCount: artist.variant_count || 0,
+        lastUpdated: artist.updated_at || artist.created_at || new Date().toISOString(),
+        submissionDate: artist.created_at || new Date().toISOString(),
+        completionPercentage: 25, // Default to 25% for section 1
+        rawData: artist // Keep raw data for debugging
+      })) || []
+
+      setArtists(transformedArtists)
+      
     } catch (err) {
-      console.error('Error fetching artists:', err)
-      setError(err instanceof Error ? err.message : 'Failed to fetch artists')
+      console.error('Error fetching artists directly:', err)
+      setError(err instanceof Error ? err.message : 'Failed to fetch artists from database')
     } finally {
       setLoading(false)
     }
   }
 
-  // Fetch artists on component mount and when filters change
+  // Fetch artists on component mount
   useEffect(() => {
-    fetchArtists()
-  }, [searchTerm, statusFilter])
+    fetchArtistsDirectly()
+  }, [])
 
   const filteredArtists = artists.filter(artist => {
     const matchesSearch = artist.firstName.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -138,48 +155,11 @@ export default function AdminDashboard() {
     complete: artists.filter(a => a.completedSections?.length === 4).length
   }
 
-  const exportData = (format: "csv" | "json") => {
-    const exportArtists = filteredArtists.map(artist => ({
-      ...artist,
-      fullName: `${artist.firstName} ${artist.lastName}`,
-      artworkCount: artist.artworkCount || 0,
-      productVariantCount: artist.variantCount || 0,
-      completionPercentage: ((artist.completedSections?.length || 0) / 4) * 100
-    }))
-
-    if (format === "csv") {
-      // Simple CSV export implementation
-      const csvHeaders = "ID,Full Name,Studio,Email,Status,Completion,Artworks,Variants,Last Updated"
-      const csvRows = exportArtists.map(artist => 
-        `${artist.id},"${artist.fullName}","${artist.studioName}","${artist.email}",${artist.status},${artist.completionPercentage}%,${artist.artworkCount},${artist.productVariantCount},${artist.lastUpdated}`
-      )
-      const csvContent = [csvHeaders, ...csvRows].join('\n')
-      
-      const blob = new Blob([csvContent], { type: 'text/csv' })
-      const url = window.URL.createObjectURL(blob)
-      const link = document.createElement('a')
-      link.href = url
-      link.download = `artist-data-${new Date().toISOString().split('T')[0]}.csv`
-      link.click()
-      window.URL.revokeObjectURL(url)
-    } else {
-      // JSON export
-      const jsonContent = JSON.stringify(exportArtists, null, 2)
-      const blob = new Blob([jsonContent], { type: 'application/json' })
-      const url = window.URL.createObjectURL(blob)
-      const link = document.createElement('a')
-      link.href = url
-      link.download = `artist-data-${new Date().toISOString().split('T')[0]}.json`
-      link.click()
-      window.URL.revokeObjectURL(url)
-    }
-  }
-
   if (loading) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="text-center">
-          <div className="animate-pulse">Loading artists from database...</div>
+          <div className="animate-pulse">Connecting directly to Supabase database...</div>
         </div>
       </div>
     )
@@ -192,26 +172,25 @@ export default function AdminDashboard() {
         <div className="flex justify-between items-center mb-8">
           <div>
             <h1 className="text-3xl font-bold tracking-tight">
-              Admin Dashboard
+              Admin Dashboard - Direct Database Connection
             </h1>
             <p className="text-muted-foreground mt-2">
-              Manage artist onboarding submissions across all 4 sections
+              Connected directly to your Supabase database (bypassing API)
             </p>
             {artists.length > 0 && (
               <Badge variant="default" className="mt-2 bg-green-600">
-                🟢 Connected to Live Database - {artists.length} artists found
+                🟢 Direct Database Connection - {artists.length} artists found
+              </Badge>
+            )}
+            {error && (
+              <Badge variant="destructive" className="mt-2">
+                ❌ Connection Error
               </Badge>
             )}
           </div>
           <div className="flex gap-2">
-            <Button variant="outline" onClick={() => fetchArtists()}>
+            <Button variant="outline" onClick={() => fetchArtistsDirectly()}>
               Refresh Data
-            </Button>
-            <Button variant="outline" onClick={() => exportData("csv")}>
-              Export CSV
-            </Button>
-            <Button variant="outline" onClick={() => exportData("json")}>
-              Export JSON
             </Button>
           </div>
         </div>
@@ -220,9 +199,9 @@ export default function AdminDashboard() {
         {error && (
           <Alert className="mb-8 border-red-200 bg-red-50">
             <AlertDescription className="text-red-800">
-              <strong>Database Error:</strong> {error}
-              <Button variant="outline" size="sm" onClick={fetchArtists} className="ml-4">
-                Retry
+              <strong>Database Connection Error:</strong> {error}
+              <Button variant="outline" size="sm" onClick={fetchArtistsDirectly} className="ml-4">
+                Retry Connection
               </Button>
             </AlertDescription>
           </Alert>
@@ -272,46 +251,12 @@ export default function AdminDashboard() {
           </Card>
         </div>
 
-        {/* Section Completion Stats */}
-        <Card className="mb-8">
-          <CardHeader>
-            <CardTitle>Section Completion Analysis</CardTitle>
-            <CardDescription>
-              Track artist progress across all 4 onboarding sections
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-              <div className="text-center">
-                <div className="text-2xl font-bold text-blue-600">{completionStats.section1}</div>
-                <div className="text-sm text-muted-foreground">Section 1<br />Artist Profile</div>
-              </div>
-              <div className="text-center">
-                <div className="text-2xl font-bold text-purple-600">{completionStats.section2}</div>
-                <div className="text-sm text-muted-foreground">Section 2<br />Artwork Catalog</div>
-              </div>
-              <div className="text-center">
-                <div className="text-2xl font-bold text-orange-600">{completionStats.section3}</div>
-                <div className="text-sm text-muted-foreground">Section 3<br />Product Config</div>
-              </div>
-              <div className="text-center">
-                <div className="text-2xl font-bold text-red-600">{completionStats.section4}</div>
-                <div className="text-sm text-muted-foreground">Section 4<br />Pricing Setup</div>
-              </div>
-              <div className="text-center">
-                <div className="text-2xl font-bold text-green-600">{completionStats.complete}</div>
-                <div className="text-sm text-muted-foreground">Complete<br />All Sections</div>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
         {/* Search and Filter */}
         <Card className="mb-8">
           <CardHeader>
             <CardTitle>Artist Search & Filter</CardTitle>
             <CardDescription>
-              Search and filter artists by various criteria
+              Search and filter your real database artists
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -334,17 +279,6 @@ export default function AdminDashboard() {
                   <SelectItem value="active">Active</SelectItem>
                 </SelectContent>
               </Select>
-              <Select value={sortBy} onValueChange={setSortBy}>
-                <SelectTrigger className="w-48">
-                  <SelectValue placeholder="Sort by" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="lastUpdated">Last Updated</SelectItem>
-                  <SelectItem value="name">Name</SelectItem>
-                  <SelectItem value="studio">Studio Name</SelectItem>
-                  <SelectItem value="completion">Completion %</SelectItem>
-                </SelectContent>
-              </Select>
             </div>
           </CardContent>
         </Card>
@@ -352,9 +286,9 @@ export default function AdminDashboard() {
         {/* Artists Table */}
         <Card>
           <CardHeader>
-            <CardTitle>Artists Overview</CardTitle>
+            <CardTitle>Your Real Database Artists</CardTitle>
             <CardDescription>
-              {filteredArtists.length} of {artists.length} artists shown
+              {filteredArtists.length} of {artists.length} artists shown from your Supabase database
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -379,47 +313,16 @@ export default function AdminDashboard() {
                         </Badge>
                       </div>
                       
-                      {/* Section Completion Indicators */}
-                      <div className="flex items-center gap-2 mb-2">
-                        <span className="text-sm text-muted-foreground">Sections:</span>
-                        {[1, 2, 3, 4].map(section => (
-                          <Badge 
-                            key={section}
-                            variant={artist.completedSections?.includes(section) ? "default" : "secondary"}
-                            className={`text-xs ${artist.completedSections?.includes(section) ? 'bg-green-600' : 'bg-gray-300'}`}
-                          >
-                            {section}
-                          </Badge>
-                        ))}
-                        <span className="text-xs text-muted-foreground ml-2">
-                          ({artist.completedSections?.length || 0}/4 complete)
-                        </span>
-                      </div>
-                      
                       <div className="flex items-center gap-6 text-sm text-muted-foreground">
                         <span>ID: {artist.id}</span>
-                        <span>{artist.artworkCount || 0} artworks</span>
-                        <span>{artist.variantCount || 0} variants</span>
                         <span>Updated: {new Date(artist.lastUpdated).toLocaleDateString()}</span>
+                        <span>Raw Data Available</span>
                       </div>
                     </div>
                     <div className="flex gap-2">
                       <Button variant="outline" size="sm">
-                        View Details
+                        View Raw Data
                       </Button>
-                      <Button variant="outline" size="sm">
-                        Export Data
-                      </Button>
-                      {artist.status === 'in_review' && (
-                        <Button size="sm">
-                          Approve
-                        </Button>
-                      )}
-                      {artist.status === 'draft' && (
-                        <Badge variant="secondary" className="ml-2">
-                          Draft Saved
-                        </Badge>
-                      )}
                     </div>
                   </div>
                 </div>
@@ -430,15 +333,10 @@ export default function AdminDashboard() {
               <div className="text-center py-12">
                 <p className="text-muted-foreground">
                   {artists.length === 0 
-                    ? "No artists found in the database. Create your first artist onboarding!" 
+                    ? "No artists found in your database. Check your Supabase connection." 
                     : "No artists found matching your search criteria."
                   }
                 </p>
-                {artists.length === 0 && (
-                  <Button variant="outline" className="mt-4" onClick={() => window.open('/onboarding', '_blank')}>
-                    Start Artist Onboarding
-                  </Button>
-                )}
               </div>
             )}
           </CardContent>
@@ -449,44 +347,37 @@ export default function AdminDashboard() {
           <Card className="mt-8">
             <CardHeader>
               <CardTitle className="flex items-center justify-between">
-                Artist Details: {selectedArtist.firstName} {selectedArtist.lastName}
+                Raw Database Data: {selectedArtist.firstName} {selectedArtist.lastName}
                 <Button variant="outline" onClick={() => setSelectedArtist(null)}>
                   Close
                 </Button>
               </CardTitle>
               <CardDescription>
-                Comprehensive view of artist data from database
+                Raw data from your Supabase database
               </CardDescription>
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <strong>Contact Information:</strong>
+                    <strong>Processed Data:</strong>
+                    <p>Name: {selectedArtist.firstName} {selectedArtist.lastName}</p>
                     <p>Email: {selectedArtist.email}</p>
-                    {selectedArtist.phone && <p>Phone: {selectedArtist.phone}</p>}
+                    <p>Studio: {selectedArtist.studioName}</p>
+                    <p>Status: {selectedArtist.status}</p>
                   </div>
                   <div>
-                    <strong>Status Information:</strong>
-                    <p>Status: {selectedArtist.status}</p>
-                    <p>Completion: {selectedArtist.completedSections?.length || 0}/4 sections</p>
+                    <strong>Database Info:</strong>
+                    <p>ID: {selectedArtist.id}</p>
                     <p>Last Updated: {new Date(selectedArtist.lastUpdated).toLocaleString()}</p>
                   </div>
                 </div>
                 
-                {selectedArtist.branding && (
-                  <div>
-                    <strong>Branding Information:</strong>
-                    {selectedArtist.branding.bio && <p>Bio: {selectedArtist.branding.bio.substring(0, 200)}...</p>}
-                    {selectedArtist.branding.tagline && <p>Tagline: {selectedArtist.branding.tagline}</p>}
-                    {selectedArtist.branding.artistic_style && <p>Style: {selectedArtist.branding.artistic_style.substring(0, 150)}...</p>}
-                  </div>
-                )}
-
                 <div className="mt-4 p-4 bg-muted rounded-lg">
-                  <p className="text-sm text-muted-foreground">
-                    This data is live from the database. Artist ID: {selectedArtist.id}
-                  </p>
+                  <strong>Raw Database Record:</strong>
+                  <pre className="mt-2 text-xs overflow-auto">
+                    {JSON.stringify(selectedArtist.rawData, null, 2)}
+                  </pre>
                 </div>
               </div>
             </CardContent>
